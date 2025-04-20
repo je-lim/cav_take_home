@@ -125,7 +125,7 @@ void TakeHome::wheel_callback(raptor_dbw_msgs::msg::WheelSpeedReport::ConstShare
 
 void TakeHome::steering_callback(raptor_dbw_msgs::msg::SteeringExtendedReport::ConstSharedPtr steering_msg) {
   //RCLCPP_INFO(this->get_logger(), "steering callback");
-  steering_angle = (steering_msg->primary_steering_angle_fbk)/15.0;
+  steering_angle = (steering_msg->primary_steering_angle_fbk)/15.0*M_PI/180;
   data_populated[2] = true;
   metrics_calculation();
 }
@@ -156,7 +156,6 @@ void TakeHome::metrics_calculation() {
   float v_d_x_fl = cos(steering_angle)*v_x_fl-sin(steering_angle)*v_y_fl;
   float k_fl = (wheel.fl-v_d_x_fl)/v_d_x_fl; //wheel slip ratio for front left
 
-
   std_msgs::msg::Float32 rr_msg;
   std_msgs::msg::Float32 rl_msg;
   std_msgs::msg::Float32 fr_msg;
@@ -178,7 +177,7 @@ void TakeHome::metrics_calculation() {
 std::queue<long> imu_timestamps;
 std::queue<int> imu_dt;
 int running_sum;
-int init_time_s;
+long init_time_s;
 int n;
 
 void TakeHome::imu_callback(novatel_oem7_msgs::msg::RAWIMU::ConstSharedPtr imu_msg) {
@@ -217,8 +216,8 @@ void TakeHome::imu_callback(novatel_oem7_msgs::msg::RAWIMU::ConstSharedPtr imu_m
 
 void TakeHome::jitter_processing() {
   //int init_n = n;
-  int latest_t = imu_timestamps.back();
-  int front_t = 0;
+  long latest_t = imu_timestamps.back();
+  long front_t = 0;
   int front_dt = 0;
   double mean = 0.0;
   double sum_error_squared = 0.0;
@@ -238,6 +237,9 @@ void TakeHome::jitter_processing() {
     n--;
 
   }
+
+  // RCLCPP_INFO(this->get_logger(), "Front: \t%ld, %d", imu_timestamps.front(), imu_dt.front());
+  // RCLCPP_INFO(this->get_logger(), "Back: \t%ld", imu_timestamps.back());
 //queues will only contain values within 1 second of latest time stamp
   mean = double(running_sum)/(n-1);
   for(int i = 0; i < n-1; i++) { //cycles queue, processes sum of squard errors
@@ -246,10 +248,10 @@ void TakeHome::jitter_processing() {
     imu_dt.pop();
     imu_dt.push(front_dt); 
   }
-  variance = sum_error_squared/(n-2); //uses n-2 because there are n time stamps, and n-1 dt data, so formula would use n-2
+  variance = sum_error_squared/(n-2); //n-2 because n is number of timestamps, so there are n-1 dt values, use n-2 for sample variance
 
   std_msgs::msg::Float32 jitter_msg;
-  jitter_msg.data = variance/(pow(10,18)); //convert nanoseconds^2 to seconds^2
+  jitter_msg.data = variance/(pow(10,18)); 
   jitter_publisher_->publish(jitter_msg);
 }
 
